@@ -49,7 +49,9 @@ def wizcoin_membership():
 
         # Perform some checks before issuing the WizCoin token
         Assert(app_call_txn.accounts[1] == pay_in_txn.sender()),
-        Assert(asset_balance == Int(0)),
+        asset_balance,
+        Assert(asset_balance.hasValue()),
+        Assert(asset_balance.value() == Int(0)),
 
         # Issue the WizCoin token as an inner transaction
         InnerTxnBuilder.Begin(),
