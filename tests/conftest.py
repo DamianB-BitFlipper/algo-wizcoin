@@ -10,12 +10,17 @@ from algopytest import (
     update_asset,
     suggested_params,
     payment_transaction,
+    opt_in_asset,
+    close_out_asset,
+    group_elem,
+    group_transaction,    
 )
 
 from wizcoin_smart_contract import wizcoin_membership
 from clear_program import clear_program
 
 TMPL_MAX_WIZCOINS = 400
+TMPL_REGISTRATION_AMOUNT = 50_000_000
 
 @fixture
 def wizcoin_asset_id(owner):
@@ -89,8 +94,8 @@ def smart_contract_id(owner, wizcoin_asset_id):
             asset_id=wizcoin_asset_id,
             manager=owner,
             reserve=smart_contract_user,
-            freeze=smart_contract_user,
-            clawback=smart_contract_user,
+            freeze=owner,
+            clawback=owner,
         )
         
         yield app_id
@@ -104,3 +109,63 @@ def smart_contract_id(owner, wizcoin_asset_id):
             foreign_assets=[wizcoin_asset_id],
             params=params,
         )
+
+def opt_in_user(owner, user, wizcoin_asset_id):
+    """Opt-in the ``user`` to the ``wizcoin_asset_id`` ASA."""
+    opt_in_asset(user, wizcoin_asset_id)
+    
+    # The test runs here    
+    yield user
+    
+    # Clean up by closing out of WizCoin and sending the remaining balance to `owner`    
+    close_out_asset(user, wizcoin_asset_id, owner)
+    
+@fixture
+def user1_in(owner, user1, wizcoin_asset_id):
+    """Create a ``user1`` fixture that has already opted in to ``wizcoin_asset_id``."""
+    yield from opt_in_user(owner, user1, wizcoin_asset_id)
+
+@fixture
+def user2_in(owner, user2, wizcoin_asset_id):
+    """Create a ``user2`` fixture that has already opted in to ``wizcoin_asset_id``."""
+    yield from opt_in_user(owner, user2, wizcoin_asset_id)
+
+@fixture
+def smart_contract_user(smart_contract_id):
+    """Return an ``AlgoUser`` representing the address of the ``smart_contract_id``."""
+    return AlgoUser(algosdk.logic.get_application_address(smart_contract_id))
+    
+def join_member(owner, user_in, smart_contract_user, wizcoin_asset_id, smart_contract_id):
+    """Grant the ``user`` membership into WizCoin."""
+    txn0 = group_elem(call_app)(
+        sender=user_in,
+        app_id=smart_contract_id,
+        app_args=["join_wizcoin"],
+        accounts=[user_in.address],
+        foreign_assets=[wizcoin_asset_id],
+    )
+
+    # Twice the minimum fee to also cover the transaction fee of the ASA transfer inner transaction
+    params = suggested_params(flat_fee=True, fee=2000)
+    txn1 = group_elem(payment_transaction)(
+        sender=user_in,
+        receiver=smart_contract_user,
+        amount=TMPL_REGISTRATION_AMOUNT,
+        params=params, 
+    )
+    
+    # Send the group transaction with the application call and the membership payment
+    group_transaction(txn0, txn1)
+
+    # Return the `user_in` after they have joined WizCoin
+    yield user_in
+
+@fixture
+def user1_member(owner, user1_in, smart_contract_user, wizcoin_asset_id, smart_contract_id):
+    """Create a ``user1_member`` fixture which is already a member of WizCoin."""
+    yield from join_member(owner, user1_in, smart_contract_user, wizcoin_asset_id, smart_contract_id)
+
+@fixture
+def user2_member(owner, user2_in, smart_contract_user, wizcoin_asset_id, smart_contract_id):
+    """Create a ``user2_member`` fixture which is already a member of WizCoin."""
+    yield from join_member(owner, user1_in, smart_contract_user, wizcoin_asset_id, smart_contract_id)    

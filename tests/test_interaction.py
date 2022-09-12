@@ -2,56 +2,96 @@ import pytest
 import algosdk
 
 from algopytest import (
-    AlgoUser,
     asset_balance,
-    call_app,
-    payment_transaction,
-    opt_in_asset,
-    close_out_asset,
-    group_elem,
-    group_transaction,
-    suggested_params,    
+    asset_info,
+    transfer_asset,
+    freeze_asset,
+    update_asset,
 )
 
-TMPL_AMOUNT = 50_000_000
-
-def opt_in_user(owner, user, wizcoin_asset_id):
-    """Opt-in the ``user`` to the ``wizcoin_asset_id`` ASA."""
-    opt_in_asset(user, wizcoin_asset_id)
-    
-    # The test runs here    
-    yield user
-    
-    # Clean up by closing out of WizCoin and sending the remaining balance to `owner`    
-    close_out_asset(user, wizcoin_asset_id, owner)
-
-@pytest.fixture()
-def user1_in(owner, user1, wizcoin_asset_id):
-    """Create a ``user1`` fixture that has already opted in to ``wizcoin_asset_id``."""
-    yield from opt_in_user(owner, user1, wizcoin_asset_id)
-
-def test_join_wizcoin_membership(owner, user1_in, wizcoin_asset_id, smart_contract_id):
-    smart_contract_user = AlgoUser(algosdk.logic.get_application_address(smart_contract_id))
-    
-    txn0 = group_elem(call_app)(
-        sender=user1_in,
-        app_id=smart_contract_id,
-        app_args=["join_wizcoin"],
-        accounts=[user1_in.address],
-        foreign_assets=[wizcoin_asset_id],
-    )
-
-    # Twice the minimum fee to also cover the transaction fee of the ASA transfer inner transaction
-    params = suggested_params(flat_fee=True, fee=2000)
-    txn1 = group_elem(payment_transaction)(
-        sender=user1_in,
-        receiver=smart_contract_user,
-        amount=TMPL_AMOUNT,
-        params=params, 
-    )
-    
-    # Send the group transaction with the application call and the membership payment
-    group_transaction(txn0, txn1)
-
+def test_join_wizcoin_membership(user1_member, wizcoin_asset_id):
     # Verify that indeed we own 1 WizCoin membership token
-    assert asset_balance(user1_in, wizcoin_asset_id) == 1
+    assert asset_balance(user1_member, wizcoin_asset_id) == 1
+
+def test_transfer_wizcoin_membership(user1_member, user2_in, wizcoin_asset_id):
+    # Transfer the membership token from `user1_member` to `user2_in`
+    transfer_asset(
+        sender=user1_member,
+        receiver=user2_in,
+        amount=1,
+        asset_id=wizcoin_asset_id,
+    )
+
+    # Verify that `user1_member` no longer has a balance whereas `user2_in` does
+    assert asset_balance(user1_member, wizcoin_asset_id) == 0
+    assert asset_balance(user2_in, wizcoin_asset_id) == 1
+    
+def test_freeze_wizcoin_membership(owner, user1_member, user2_in, wizcoin_asset_id):
+    # Let the `owner` freeze `user1_member`. Then upon an attempted asset transfer, it will fail.
+    freeze_asset(
+        sender=owner,
+        target=user1_member,
+        new_freeze_state=True,
+        asset_id=wizcoin_asset_id,
+    )
+
+    with pytest.raises(algosdk.error.AlgodHTTPError, match=f'.*asset {wizcoin_asset_id} frozen in {user1_member.address}.*'):
+        transfer_asset(
+            sender=user1_member,
+            receiver=user2_in,
+            amount=1,
+            asset_id=wizcoin_asset_id,
+        )
+
+    # Unfreeze the account and re-attempt the transfer, which should succeed
+    freeze_asset(
+        sender=owner,
+        target=user1_member,
+        new_freeze_state=False,
+        asset_id=wizcoin_asset_id,
+    )
+
+    transfer_asset(
+        sender=user1_member,
+        receiver=user2_in,
+        amount=1,
+        asset_id=wizcoin_asset_id,
+    )
+        
+    # Verify that `user1_member` no longer has a balance whereas `user2_in` does
+    assert asset_balance(user1_member, wizcoin_asset_id) == 0
+    assert asset_balance(user2_in, wizcoin_asset_id) == 1
+
+def test_clawback_wizcoin_membership(owner, user1_member, smart_contract_user, wizcoin_asset_id):
+    # Clawback the membership token from `user1_member`
+    transfer_asset(
+        sender=owner,
+        receiver=smart_contract_user,
+        revocation_target=user1_member,
+        amount=1,
+        asset_id=wizcoin_asset_id,
+    )
+
+    # Verify that the `user1_member` no longer has their membership token
+    assert asset_balance(user1_member, wizcoin_asset_id) == 0
+    
+def test_relinquish_wizcoin_freeze_clawback(owner, user1_member, smart_contract_user, wizcoin_asset_id):
+    # Forever relinquish the ability to freeze or clawback WizCoin membership tokens
+    update_asset(
+        sender=owner,
+        asset_id=wizcoin_asset_id,
+        manager=owner,
+        reserve=smart_contract_user,
+        freeze=None,
+        clawback=None,
+    )
+
+    # Assert that all of the freeze and clawback addresses have been annulled
+    wizcoin_info = asset_info(wizcoin_asset_id)
+
+    assert wizcoin_info['asset']['params']['manager'] == owner.address
+    assert wizcoin_info['asset']['params']['reserve'] == smart_contract_user.address
+    assert wizcoin_info['asset']['params']['freeze'] == algosdk.constants.ZERO_ADDRESS
+    assert wizcoin_info['asset']['params']['clawback'] == algosdk.constants.ZERO_ADDRESS
+
+    
