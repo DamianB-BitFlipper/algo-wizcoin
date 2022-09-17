@@ -2,6 +2,7 @@ import algosdk
 from pytest import fixture
 from algopytest import (
     AlgoUser,
+    SmartContractAccount,
     MultisigAccount,
     deploy_smart_contract,
     call_app,
@@ -61,13 +62,13 @@ def smart_contract_id(owner, wizcoin_asset_id):
     ) as app_id:
         # Twice the minimum fee to also cover the transaction fee of the ASA transfer inner transaction
         params = suggested_params(flat_fee=True, fee=2000)
-        smart_contract_user = AlgoUser(algosdk.logic.get_application_address(app_id))
+        smart_contract_account = SmartContractAccount(app_id)
         
         # Raise the minimum balance of the smart contract, in order to even be able to
         # opt-in to the WizCoin ASA. The minimum balance is 200000 microAlgos.
         payment_transaction(
             sender=owner,
-            receiver=smart_contract_user,
+            receiver=smart_contract_account,
             amount=200000,
         )
         
@@ -84,10 +85,10 @@ def smart_contract_id(owner, wizcoin_asset_id):
         # Transfer all (close out) of the WizCoins to the smart contract
         transfer_asset(
             sender=owner,
-            receiver=smart_contract_user,
+            receiver=smart_contract_account,
             amount=TMPL_MAX_WIZCOINS,
             asset_id=wizcoin_asset_id,
-            #close_assets_to=smart_contract_user, # TODO: This produces an error
+            #close_assets_to=smart_contract_account, # TODO: This produces an error
         )
 
         # Make the smart contract the reserve account for the WizCoin asset
@@ -95,7 +96,7 @@ def smart_contract_id(owner, wizcoin_asset_id):
             sender=owner,
             asset_id=wizcoin_asset_id,
             manager=owner,
-            reserve=smart_contract_user,
+            reserve=smart_contract_account,
             freeze=owner,
             clawback=owner,
         )
@@ -107,7 +108,7 @@ def smart_contract_id(owner, wizcoin_asset_id):
             sender=owner,
             app_id=app_id,
             app_args=["relinquish_wizcoins"],
-            accounts=[smart_contract_user.address],            
+            accounts=[smart_contract_account.address],            
             foreign_assets=[wizcoin_asset_id],
             params=params,
         )
@@ -178,11 +179,11 @@ def multisig_account_in(owner, user3, user4, wizcoin_asset_id):
     )
     
 @fixture
-def smart_contract_user(smart_contract_id):
-    """Return an ``AlgoUser`` representing the address of the ``smart_contract_id``."""
-    return AlgoUser(algosdk.logic.get_application_address(smart_contract_id))
+def smart_contract_account(smart_contract_id):
+    """Return an ``SmartContractAccount`` representing the address of the ``smart_contract_id``."""
+    return SmartContractAccount(smart_contract_id)
     
-def join_member(owner, user_in, smart_contract_user, wizcoin_asset_id, smart_contract_id):
+def join_member(owner, user_in, smart_contract_account, wizcoin_asset_id, smart_contract_id):
     """Grant the ``user`` membership into WizCoin."""
     txn0 = group_elem(call_app)(
         sender=user_in,
@@ -196,7 +197,7 @@ def join_member(owner, user_in, smart_contract_user, wizcoin_asset_id, smart_con
     params = suggested_params(flat_fee=True, fee=2000)
     txn1 = group_elem(payment_transaction)(
         sender=user_in,
-        receiver=smart_contract_user,
+        receiver=smart_contract_account,
         amount=TMPL_REGISTRATION_AMOUNT,
         params=params, 
     )
@@ -208,17 +209,17 @@ def join_member(owner, user_in, smart_contract_user, wizcoin_asset_id, smart_con
     yield user_in
 
 @fixture
-def user1_member(owner, user1_in, smart_contract_user, wizcoin_asset_id, smart_contract_id):
+def user1_member(owner, user1_in, smart_contract_account, wizcoin_asset_id, smart_contract_id):
     """Create a ``user1_member`` fixture which is already a member of WizCoin."""
-    yield from join_member(owner, user1_in, smart_contract_user, wizcoin_asset_id, smart_contract_id)
+    yield from join_member(owner, user1_in, smart_contract_account, wizcoin_asset_id, smart_contract_id)
 
 @fixture
-def user2_member(owner, user2_in, smart_contract_user, wizcoin_asset_id, smart_contract_id):
+def user2_member(owner, user2_in, smart_contract_account, wizcoin_asset_id, smart_contract_id):
     """Create a ``user2_member`` fixture which is already a member of WizCoin."""
-    yield from join_member(owner, user1_in, smart_contract_user, wizcoin_asset_id, smart_contract_id)    
+    yield from join_member(owner, user1_in, smart_contract_account, wizcoin_asset_id, smart_contract_id)    
 
 @fixture
-def multisig_account_member(owner, multisig_account_in, user3, user4, smart_contract_user, wizcoin_asset_id, smart_contract_id):
+def multisig_account_member(owner, multisig_account_in, user3, user4, smart_contract_account, wizcoin_asset_id, smart_contract_id):
     """Create a ``multisig_account_member`` fixture which is already a member of WizCoin."""
     signing_accounts = [user3, user4]
     
@@ -238,12 +239,12 @@ def multisig_account_member(owner, multisig_account_in, user3, user4, smart_cont
     # Twice the minimum fee to also cover the transaction fee of the ASA transfer inner transaction
     params = suggested_params(flat_fee=True, fee=2000)
 
-    # Create a multisig transaction which pays the `smart_contract_user` on behalf of the multi-signature account
+    # Create a multisig transaction which pays the `smart_contract_account` on behalf of the multi-signature account
     txn1 = group_elem(multisig_transaction)(
         multisig_account=multisig_account_in,
         transaction=group_elem(payment_transaction)(
             sender=multisig_account_in,
-            receiver=smart_contract_user,
+            receiver=smart_contract_account,
             amount=TMPL_REGISTRATION_AMOUNT,
             params=params,
         ),

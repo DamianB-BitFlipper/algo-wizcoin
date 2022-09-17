@@ -9,7 +9,7 @@ from algopytest import (
     asset_info,
 )
 
-def test_initialization(owner, smart_contract_user, wizcoin_asset_id, smart_contract_id):
+def test_initialization(owner, smart_contract_account, wizcoin_asset_id, smart_contract_id):
     # Make sure the manager and asset-id were correctly recorded
     state = application_global_state(
         smart_contract_id,
@@ -23,7 +23,7 @@ def test_initialization(owner, smart_contract_user, wizcoin_asset_id, smart_cont
     wizcoin_info = asset_info(wizcoin_asset_id)
 
     assert wizcoin_info['asset']['params']['manager'] == owner.address
-    assert wizcoin_info['asset']['params']['reserve'] == smart_contract_user.address
+    assert wizcoin_info['asset']['params']['reserve'] == smart_contract_account.address
     assert wizcoin_info['asset']['params']['freeze'] == owner.address
     assert wizcoin_info['asset']['params']['clawback'] == owner.address
     assert wizcoin_info['asset']['params']['total'] == 400
