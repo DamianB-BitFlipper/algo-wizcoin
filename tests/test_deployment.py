@@ -35,3 +35,7 @@ def test_non_opt_in_wizcoin(user1, wizcoin_asset_id):
 def test_opt_in_wizcoin(user1_in, wizcoin_asset_id):
     # When the `asset_balance` is `0`, that means that the `user1` has opted-in, but is not yet a member
     assert asset_balance(user1_in, wizcoin_asset_id) == 0
+
+def test_multisig_opt_in_wizcoin(multisig_account_in, wizcoin_asset_id):
+    # When the `asset_balance` is `0`, that means that the `multisig_account_in` has opted-in, but is not yet a member
+    assert asset_balance(multisig_account_in, wizcoin_asset_id) == 0    

@@ -13,6 +13,11 @@ def test_join_wizcoin_membership(user1_member, wizcoin_asset_id):
     # Verify that indeed we own 1 WizCoin membership token
     assert asset_balance(user1_member, wizcoin_asset_id) == 1
 
+# TODO: Parameterize over the fixtures
+def test_join_wizcoin_multisig_membership(multisig_account_member, wizcoin_asset_id):
+    # Verify that indeed we own 1 WizCoin membership token
+    assert asset_balance(multisig_account_member, wizcoin_asset_id) == 1
+    
 def test_transfer_wizcoin_membership(user1_member, user2_in, wizcoin_asset_id):
     # Transfer the membership token from `user1_member` to `user2_in`
     transfer_asset(

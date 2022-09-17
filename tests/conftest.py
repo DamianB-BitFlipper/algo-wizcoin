@@ -1,7 +1,8 @@
 import algosdk
 from pytest import fixture
 from algopytest import (
-    AlgoUser,    
+    AlgoUser,
+    MultisigAccount,
     deploy_smart_contract,
     call_app,
     create_asset,
@@ -13,7 +14,8 @@ from algopytest import (
     opt_in_asset,
     close_out_asset,
     group_elem,
-    group_transaction,    
+    group_transaction,
+    multisig_transaction,
 )
 
 from wizcoin_smart_contract import wizcoin_membership
@@ -131,6 +133,51 @@ def user2_in(owner, user2, wizcoin_asset_id):
     yield from opt_in_user(owner, user2, wizcoin_asset_id)
 
 @fixture
+def multisig_account_in(owner, user3, user4, wizcoin_asset_id):
+    """Create a multisig account with owners ``user3`` and ``user4`` that is opted in to ``wizcoin_asset_id``."""
+    signing_accounts = [user3, user4]
+    multisig_account = MultisigAccount(
+        version=1,
+        threshold=2,
+        owner_accounts=[user3, user4],
+    )
+
+    # Fund the `multisig_account` from `user3` with 100 Algos
+    payment_transaction(
+        sender=user3,
+        receiver=multisig_account,
+        amount=100_000_000,
+    )
+
+    # Opt the `multisig_account` into the `wizcoin_asset_id`
+    multisig_transaction(
+        multisig_account=multisig_account,
+        transaction=group_elem(opt_in_asset)(multisig_account, wizcoin_asset_id),
+        signing_accounts=signing_accounts,
+    )
+
+    yield multisig_account
+
+    # Opt the `multisig_account` out of the `wizcoin_asset_id`
+    multisig_transaction(
+        multisig_account=multisig_account,
+        transaction=group_elem(close_out_asset)(multisig_account, wizcoin_asset_id, owner),
+        signing_accounts=signing_accounts,
+    )
+
+    # Return the remaining balance of `multisig_account` back to `user3`
+    multisig_transaction(
+        multisig_account=multisig_account,        
+        transaction=group_elem(payment_transaction)(
+            sender=multisig_account,
+            receiver=user3,
+            amount=0,
+            close_remainder_to=user3,
+        ),
+        signing_accounts=signing_accounts,
+    )
+    
+@fixture
 def smart_contract_user(smart_contract_id):
     """Return an ``AlgoUser`` representing the address of the ``smart_contract_id``."""
     return AlgoUser(algosdk.logic.get_application_address(smart_contract_id))
@@ -169,3 +216,42 @@ def user1_member(owner, user1_in, smart_contract_user, wizcoin_asset_id, smart_c
 def user2_member(owner, user2_in, smart_contract_user, wizcoin_asset_id, smart_contract_id):
     """Create a ``user2_member`` fixture which is already a member of WizCoin."""
     yield from join_member(owner, user1_in, smart_contract_user, wizcoin_asset_id, smart_contract_id)    
+
+@fixture
+def multisig_account_member(owner, multisig_account_in, user3, user4, smart_contract_user, wizcoin_asset_id, smart_contract_id):
+    """Create a ``multisig_account_member`` fixture which is already a member of WizCoin."""
+    signing_accounts = [user3, user4]
+    
+    # Create a multisig transaction which calls the application on behalf of the multi-signature account
+    txn0 = group_elem(multisig_transaction)(
+        multisig_account=multisig_account_in,
+        transaction=group_elem(call_app)(
+            sender=multisig_account_in,
+            app_id=smart_contract_id,
+            app_args=["join_wizcoin"],
+            accounts=[multisig_account_in.address],
+            foreign_assets=[wizcoin_asset_id],            
+        ),
+        signing_accounts=signing_accounts,
+    )
+
+    # Twice the minimum fee to also cover the transaction fee of the ASA transfer inner transaction
+    params = suggested_params(flat_fee=True, fee=2000)
+
+    # Create a multisig transaction which pays the `smart_contract_user` on behalf of the multi-signature account
+    txn1 = group_elem(multisig_transaction)(
+        multisig_account=multisig_account_in,
+        transaction=group_elem(payment_transaction)(
+            sender=multisig_account_in,
+            receiver=smart_contract_user,
+            amount=TMPL_REGISTRATION_AMOUNT,
+            params=params,
+        ),
+        signing_accounts=signing_accounts,
+    )
+    
+    # Send the group transaction with the application call and the membership payment
+    group_transaction(txn0, txn1)
+
+    # Return the `multisig_account_in` after they have joined WizCoin
+    yield multisig_account_in   
