@@ -108,7 +108,7 @@ def smart_contract_id(owner, wizcoin_asset_id):
             sender=owner,
             app_id=app_id,
             app_args=["relinquish_wizcoins"],
-            accounts=[smart_contract_account.address],            
+            accounts=[smart_contract_account],            
             foreign_assets=[wizcoin_asset_id],
             params=params,
         )
@@ -189,7 +189,7 @@ def join_member(owner, user_in, smart_contract_account, wizcoin_asset_id, smart_
         sender=user_in,
         app_id=smart_contract_id,
         app_args=["join_wizcoin"],
-        accounts=[user_in.address],
+        accounts=[user_in],
         foreign_assets=[wizcoin_asset_id],
     )
 
@@ -230,7 +230,7 @@ def multisig_account_member(owner, multisig_account_in, user3, user4, smart_cont
             sender=multisig_account_in,
             app_id=smart_contract_id,
             app_args=["join_wizcoin"],
-            accounts=[multisig_account_in.address],
+            accounts=[multisig_account_in],
             foreign_assets=[wizcoin_asset_id],            
         ),
         signing_accounts=signing_accounts,
