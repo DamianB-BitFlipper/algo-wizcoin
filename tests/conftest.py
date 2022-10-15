@@ -14,9 +14,9 @@ from algopytest import (
     payment_transaction,
     opt_in_asset,
     close_out_asset,
-    txn_elem,
     group_transaction,
     multisig_transaction,
+    TxnElemsContext,
 )
 
 from wizcoin_smart_contract import wizcoin_membership
@@ -151,30 +151,39 @@ def multisig_account_in(owner, user3, user4, wizcoin_asset_id):
     )
 
     # Opt the `multisig_account` into the `wizcoin_asset_id`
+    with TxnElemsContext():
+        opt_in_txn = opt_in_asset(multisig_account, wizcoin_asset_id)
+        
     multisig_transaction(
         multisig_account=multisig_account,
-        transaction=txn_elem(opt_in_asset)(multisig_account, wizcoin_asset_id),
+        transaction=opt_in_txn,
         signing_accounts=signing_accounts,
     )
 
     yield multisig_account
 
     # Opt the `multisig_account` out of the `wizcoin_asset_id`
+    with TxnElemsContext():
+        close_out_txn = close_out_asset(multisig_account, wizcoin_asset_id, owner)
+    
     multisig_transaction(
         multisig_account=multisig_account,
-        transaction=txn_elem(close_out_asset)(multisig_account, wizcoin_asset_id, owner),
+        transaction=close_out_txn,
         signing_accounts=signing_accounts,
     )
 
     # Return the remaining balance of `multisig_account` back to `user3`
-    multisig_transaction(
-        multisig_account=multisig_account,        
-        transaction=txn_elem(payment_transaction)(
+    with TxnElemsContext():
+        payment_txn = payment_transaction(
             sender=multisig_account,
             receiver=user3,
             amount=0,
             close_remainder_to=user3,
-        ),
+        )
+    
+    multisig_transaction(
+        multisig_account=multisig_account,        
+        transaction=payment_txn,
         signing_accounts=signing_accounts,
     )
     
@@ -185,22 +194,24 @@ def smart_contract_account(smart_contract_id):
     
 def join_member(owner, user_in, smart_contract_account, wizcoin_asset_id, smart_contract_id):
     """Grant the ``user`` membership into WizCoin."""
-    txn0 = txn_elem(call_app)(
-        sender=user_in,
-        app_id=smart_contract_id,
-        app_args=["join_wizcoin"],
-        accounts=[user_in],
-        foreign_assets=[wizcoin_asset_id],
-    )
-
-    # Twice the minimum fee to also cover the transaction fee of the ASA transfer inner transaction
+    # Twice the minimum fee to also cover the transaction fee of the ASA transfer inner transaction    
     params = suggested_params(flat_fee=True, fee=2000)
-    txn1 = txn_elem(payment_transaction)(
-        sender=user_in,
-        receiver=smart_contract_account,
-        amount=TMPL_REGISTRATION_AMOUNT,
-        params=params, 
-    )
+
+    with TxnElemsContext():
+        txn0 = call_app(
+            sender=user_in,
+            app_id=smart_contract_id,
+            app_args=["join_wizcoin"],
+            accounts=[user_in],
+            foreign_assets=[wizcoin_asset_id],
+        )
+
+        txn1 = payment_transaction(
+            sender=user_in,
+            receiver=smart_contract_account,
+            amount=TMPL_REGISTRATION_AMOUNT,
+            params=params, 
+        )
     
     # Send the group transaction with the application call and the membership payment
     group_transaction(txn0, txn1)
@@ -221,35 +232,35 @@ def user2_member(owner, user2_in, smart_contract_account, wizcoin_asset_id, smar
 @fixture
 def multisig_account_member(owner, multisig_account_in, user3, user4, smart_contract_account, wizcoin_asset_id, smart_contract_id):
     """Create a ``multisig_account_member`` fixture which is already a member of WizCoin."""
-    signing_accounts = [user3, user4]
-    
-    # Create a multisig transaction which calls the application on behalf of the multi-signature account
-    txn0 = txn_elem(multisig_transaction)(
-        multisig_account=multisig_account_in,
-        transaction=txn_elem(call_app)(
-            sender=multisig_account_in,
-            app_id=smart_contract_id,
-            app_args=["join_wizcoin"],
-            accounts=[multisig_account_in],
-            foreign_assets=[wizcoin_asset_id],            
-        ),
-        signing_accounts=signing_accounts,
-    )
-
     # Twice the minimum fee to also cover the transaction fee of the ASA transfer inner transaction
     params = suggested_params(flat_fee=True, fee=2000)
+    signing_accounts = [user3, user4]
 
-    # Create a multisig transaction which pays the `smart_contract_account` on behalf of the multi-signature account
-    txn1 = txn_elem(multisig_transaction)(
-        multisig_account=multisig_account_in,
-        transaction=txn_elem(payment_transaction)(
-            sender=multisig_account_in,
-            receiver=smart_contract_account,
-            amount=TMPL_REGISTRATION_AMOUNT,
-            params=params,
-        ),
-        signing_accounts=signing_accounts,
-    )
+    with TxnElemsContext():
+        # Create a multisig transaction which calls the application on behalf of the multi-signature account
+        txn0 = multisig_transaction(
+            multisig_account=multisig_account_in,
+            transaction=call_app(
+                sender=multisig_account_in,
+                app_id=smart_contract_id,
+                app_args=["join_wizcoin"],
+                accounts=[multisig_account_in],
+                foreign_assets=[wizcoin_asset_id],            
+            ),
+            signing_accounts=signing_accounts,
+        )
+
+        # Create a multisig transaction which pays the `smart_contract_account` on behalf of the multi-signature account
+        txn1 = multisig_transaction(
+            multisig_account=multisig_account_in,
+            transaction=payment_transaction(
+                sender=multisig_account_in,
+                receiver=smart_contract_account,
+                amount=TMPL_REGISTRATION_AMOUNT,
+                params=params,
+            ),
+            signing_accounts=signing_accounts,
+        )
     
     # Send the group transaction with the application call and the membership payment
     group_transaction(txn0, txn1)
