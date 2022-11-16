@@ -1,4 +1,5 @@
 import algosdk
+import pytest
 from pytest import fixture
 from algopytest import (
     AlgoUser,
@@ -22,8 +23,8 @@ from algopytest import (
 from wizcoin_smart_contract import wizcoin_membership
 from clear_program import clear_program
 
-TMPL_MAX_WIZCOINS = 400
-TMPL_REGISTRATION_AMOUNT = 50_000_000
+pytest.TMPL_MAX_WIZCOINS = 400
+pytest.TMPL_REGISTRATION_AMOUNT = 50_000_000
 
 @fixture
 def wizcoin_asset_id(owner):
@@ -35,7 +36,7 @@ def wizcoin_asset_id(owner):
         freeze=owner,
         clawback=owner,
         asset_name="WizCoin",
-        total=TMPL_MAX_WIZCOINS,
+        total=pytest.TMPL_MAX_WIZCOINS,
         decimals=0,
         unit_name="WizToken",
         default_frozen=False,
@@ -86,7 +87,7 @@ def smart_contract_id(owner, wizcoin_asset_id):
         transfer_asset(
             sender=owner,
             receiver=smart_contract_account,
-            amount=TMPL_MAX_WIZCOINS,
+            amount=pytest.TMPL_MAX_WIZCOINS,
             asset_id=wizcoin_asset_id,
             #close_assets_to=smart_contract_account, # TODO: This produces an error
         )
@@ -209,7 +210,7 @@ def join_member(owner, user_in, smart_contract_account, wizcoin_asset_id, smart_
         txn1 = payment_transaction(
             sender=user_in,
             receiver=smart_contract_account,
-            amount=TMPL_REGISTRATION_AMOUNT,
+            amount=pytest.TMPL_REGISTRATION_AMOUNT,
             params=params, 
         )
     
@@ -256,7 +257,7 @@ def multisig_account_member(owner, multisig_account_in, user3, user4, smart_cont
             transaction=payment_transaction(
                 sender=multisig_account_in,
                 receiver=smart_contract_account,
-                amount=TMPL_REGISTRATION_AMOUNT,
+                amount=pytest.TMPL_REGISTRATION_AMOUNT,
                 params=params,
             ),
             signing_accounts=signing_accounts,

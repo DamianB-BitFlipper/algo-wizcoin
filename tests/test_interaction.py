@@ -6,6 +6,11 @@ from algopytest import (
     asset_info,
     transfer_asset,
     freeze_asset,
+    suggested_params,
+    TxnElemsContext,
+    call_app,
+    payment_transaction,
+    group_transaction,
     update_asset,
 )
 
@@ -22,7 +27,57 @@ def test_join_wizcoin_membership(member_name, wizcoin_asset_id, request):
 
     # Verify that indeed we own 1 WizCoin membership token
     assert asset_balance(member, wizcoin_asset_id) == 1
+
+@pytest.mark.parametrize(
+    "call_app_user_name, payment_user_name, payment_amount",
+    [
+        # WizCoin over-payment
+        ("user1_in", "user1_in", pytest.TMPL_REGISTRATION_AMOUNT + 1),
+        # WizCoin under-payment
+        ("user1_in", "user1_in", pytest.TMPL_REGISTRATION_AMOUNT - 1),
+        # Mismatching users joining WizCoin
+        ("user1_in", "user2_in", pytest.TMPL_REGISTRATION_AMOUNT),
+        # Already a member of WizCoin
+        ("user1_member", "user1_member", pytest.TMPL_REGISTRATION_AMOUNT),
+    ]
+)    
+def test_join_wizcoin_membership_raises(
+        call_app_user_name,
+        payment_user_name,
+        payment_amount,        
+        wizcoin_asset_id,
+        smart_contract_account,
+        smart_contract_id,
+        request
+):
+    """Do not send the required amount of Algos for WizCoin membership."""
+    # Retrieve the respective `call_app_user` and `payment_user` fixtures by name
+    call_app_user = request.getfixturevalue(call_app_user_name)
+    payment_user = request.getfixturevalue(payment_user_name)
     
+    # Twice the minimum fee to also cover the transaction fee of the ASA transfer inner transaction    
+    params = suggested_params(flat_fee=True, fee=2000)
+
+    with TxnElemsContext():
+        txn0 = call_app(
+            sender=call_app_user,
+            app_id=smart_contract_id,
+            app_args=["join_wizcoin"],
+            accounts=[call_app_user],
+            foreign_assets=[wizcoin_asset_id],
+        )
+
+        txn1 = payment_transaction(
+            sender=payment_user,
+            receiver=smart_contract_account,
+            amount=payment_amount,
+            params=params,
+        )
+    
+    with pytest.raises(algosdk.error.AlgodHTTPError, match=r'transaction .*: logic eval error: assert failed'):
+        # Send the group transaction with the application call and the membership payment
+        group_transaction(txn0, txn1)
+        
 def test_transfer_wizcoin_membership(user1_member, user2_in, wizcoin_asset_id):
     # Transfer the membership token from `user1_member` to `user2_in`
     transfer_asset(
@@ -103,5 +158,3 @@ def test_relinquish_wizcoin_freeze_clawback(owner, user1_member, smart_contract_
     assert wizcoin_info['asset']['params']['reserve'] == smart_contract_account.address
     assert wizcoin_info['asset']['params']['freeze'] == algosdk.constants.ZERO_ADDRESS
     assert wizcoin_info['asset']['params']['clawback'] == algosdk.constants.ZERO_ADDRESS
-
-    
