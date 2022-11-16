@@ -73,9 +73,9 @@ def test_join_wizcoin_membership_raises(
             amount=payment_amount,
             params=params,
         )
-    
+        
+    # Send the group transaction which should fail
     with pytest.raises(algosdk.error.AlgodHTTPError, match=r'transaction .*: logic eval error: assert failed'):
-        # Send the group transaction with the application call and the membership payment
         group_transaction(txn0, txn1)
         
 def test_transfer_wizcoin_membership(user1_member, user2_in, wizcoin_asset_id):
