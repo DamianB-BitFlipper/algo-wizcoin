@@ -60,6 +60,7 @@ def smart_contract_id(owner, wizcoin_asset_id):
         global_bytes=1,
         global_ints=1,
         app_args=[wizcoin_asset_id],
+        version=6,
     ) as app_id:
         # Twice the minimum fee to also cover the transaction fee of the ASA transfer inner transaction
         params = suggested_params(flat_fee=True, fee=2000)
@@ -104,7 +105,7 @@ def smart_contract_id(owner, wizcoin_asset_id):
         
         yield app_id
 
-        # Relinquish all of the WizCoins back to the manager, so that that user can close the WizCoin ASA
+        # Relinquish all of the WizCoins back to the manager, so that that manager can destroy the WizCoin ASA
         call_app(
             sender=owner,
             app_id=app_id,
@@ -112,7 +113,7 @@ def smart_contract_id(owner, wizcoin_asset_id):
             accounts=[smart_contract_account],            
             foreign_assets=[wizcoin_asset_id],
             params=params,
-        )
+        )        
 
 def opt_in_user(owner, user, wizcoin_asset_id):
     """Opt-in the ``user`` to the ``wizcoin_asset_id`` ASA."""

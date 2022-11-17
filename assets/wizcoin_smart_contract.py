@@ -55,23 +55,27 @@ def wizcoin_membership():
     # Pass in the smart contract address as an account to get our own WizCoin balance.
     # This operation must be performed as an inner transaction; the smart
     # contract has no explicit private key to opt in otherwise.
-    own_asset_balance = AssetHolding.balance(Int(1), App.globalGet(var_ASA_id))
     relinquish_wizcoins = Seq([
         # Sanity checks        
         Assert(is_manager),
         Assert(Txn.application_args.length() == Int(1)),
         Assert(Txn.accounts.length() == Int(1)),
         
-        own_asset_balance,
-        Assert(own_asset_balance.hasValue()),
-        
-        # Return the remaining WizCoins back to the manager
+        # Return the remaining WizCoins and Algo balance back to the manager
         InnerTxnBuilder.Begin(),
         InnerTxnBuilder.SetFields({
             TxnField.type_enum: TxnType.AssetTransfer,
             TxnField.asset_receiver: App.globalGet(var_manager),
-            TxnField.asset_amount: own_asset_balance.value(),
+            TxnField.asset_amount: Int(0),
+            TxnField.asset_close_to: App.globalGet(var_manager),
             TxnField.xfer_asset: App.globalGet(var_ASA_id),
+        }),
+        InnerTxnBuilder.Next(),
+        InnerTxnBuilder.SetFields({
+            TxnField.type_enum: TxnType.Payment,
+            TxnField.amount: Int(0),
+            TxnField.receiver: App.globalGet(var_manager),
+            TxnField.close_remainder_to: App.globalGet(var_manager),
         }),
         InnerTxnBuilder.Submit(),
         
