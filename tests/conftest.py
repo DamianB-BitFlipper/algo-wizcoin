@@ -30,7 +30,7 @@ pytest.TMPL_REGISTRATION_AMOUNT = 50_000_000
 @fixture
 def wizcoin_asset_id(owner):
     # Create the WizCoin asset
-    asset_id = create_asset(
+    with create_asset(
         sender=owner,
         manager=owner,
         reserve=owner,
@@ -41,16 +41,8 @@ def wizcoin_asset_id(owner):
         decimals=0,
         unit_name="WizToken",
         default_frozen=False,
-    )
-    
-    yield asset_id
-
-    # Clean up the Wizcoin asset
-    destroy_asset(
-        sender=owner,
-        asset_id=asset_id,
-    )
-
+    ) as asset_id:
+        yield asset_id
     
 @fixture
 def smart_contract_id(owner, wizcoin_asset_id):
