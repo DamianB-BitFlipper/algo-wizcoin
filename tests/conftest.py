@@ -5,8 +5,9 @@ from algopytest import (
     AlgoUser,
     SmartContractAccount,
     MultisigAccount,
-    deploy_smart_contract,
+    create_app,
     call_app,
+    delete_app,
     create_asset,
     destroy_asset,    
     transfer_asset,
@@ -52,8 +53,8 @@ def wizcoin_asset_id(owner):
 
     
 @fixture
-def smart_contract_id(owner, wizcoin_asset_id):    
-    with deploy_smart_contract(
+def smart_contract_id(owner, wizcoin_asset_id):
+    app_id = create_app(
         owner,
         approval_program=wizcoin_membership(), 
         clear_program=clear_program(),
@@ -61,59 +62,62 @@ def smart_contract_id(owner, wizcoin_asset_id):
         global_ints=1,
         app_args=[wizcoin_asset_id],
         version=6,
-    ) as app_id:
-        # Twice the minimum fee to also cover the transaction fee of the ASA transfer inner transaction
-        params = suggested_params(flat_fee=True, fee=2000)
-        smart_contract_account = SmartContractAccount(app_id)
-        
-        # Raise the minimum balance of the smart contract, in order to even be able to
-        # opt-in to the WizCoin ASA. The minimum balance is 200000 microAlgos.
-        payment_transaction(
-            sender=owner,
-            receiver=smart_contract_account,
-            amount=200000,
-        )
-        
-        # Opt in the smart contract to the WizCoin ASA via an application call. This application
-        # call triggers an inner transaction which opts the smart contract in.
-        call_app(
-            sender=owner,
-            app_id=app_id,
-            app_args=["opt_in_wizcoin"],
-            foreign_assets=[wizcoin_asset_id],
-            params=params,
-        )
-        
-        # Transfer all (close out) of the WizCoins to the smart contract
-        transfer_asset(
-            sender=owner,
-            receiver=smart_contract_account,
-            amount=pytest.TMPL_MAX_WIZCOINS,
-            asset_id=wizcoin_asset_id,
-            #close_assets_to=smart_contract_account, # TODO: This produces an error
-        )
+    )
 
-        # Make the smart contract the reserve account for the WizCoin asset
-        update_asset(
-            sender=owner,
-            asset_id=wizcoin_asset_id,
-            manager=owner,
-            reserve=smart_contract_account,
-            freeze=owner,
-            clawback=owner,
-        )
+    # Twice the minimum fee to also cover the transaction fee of the ASA transfer inner transaction
+    params = suggested_params(flat_fee=True, fee=2000)
+    smart_contract_account = SmartContractAccount(app_id)
         
-        yield app_id
+    # Raise the minimum balance of the smart contract, in order to even be able to
+    # opt-in to the WizCoin ASA. The minimum balance is 200000 microAlgos.
+    payment_transaction(
+        sender=owner,
+        receiver=smart_contract_account,
+        amount=200000,
+    )
+        
+    # Opt in the smart contract to the WizCoin ASA via an application call. This application
+    # call triggers an inner transaction which opts the smart contract in.
+    call_app(
+        sender=owner,
+        app_id=app_id,
+        app_args=["opt_in_wizcoin"],
+        foreign_assets=[wizcoin_asset_id],
+        params=params,
+    )
+        
+    # Transfer all (close out) of the WizCoins to the smart contract
+    transfer_asset(
+        sender=owner,
+        receiver=smart_contract_account,
+        amount=pytest.TMPL_MAX_WIZCOINS,
+        asset_id=wizcoin_asset_id,
+        #close_assets_to=smart_contract_account, # TODO: This produces an error
+    )
 
-        # Relinquish all of the WizCoins back to the manager, so that that manager can destroy the WizCoin ASA
-        call_app(
-            sender=owner,
-            app_id=app_id,
-            app_args=["relinquish_wizcoins"],
-            accounts=[smart_contract_account],            
-            foreign_assets=[wizcoin_asset_id],
-            params=params,
-        )        
+    # Make the smart contract the reserve account for the WizCoin asset
+    update_asset(
+        sender=owner,
+        asset_id=wizcoin_asset_id,
+        manager=owner,
+        reserve=smart_contract_account,
+        freeze=owner,
+        clawback=owner,
+    )
+        
+    yield app_id
+
+    # Relinquish all of the WizCoins back to the manager, so that that manager can destroy the WizCoin ASA
+    call_app(
+        sender=owner,
+        app_id=app_id,
+        app_args=["relinquish_wizcoins"],
+        accounts=[smart_contract_account],            
+        foreign_assets=[wizcoin_asset_id],
+        params=params,
+    )
+
+    delete_app(owner, app_id)
 
 def opt_in_user(owner, user, wizcoin_asset_id):
     """Opt-in the ``user`` to the ``wizcoin_asset_id`` ASA."""
